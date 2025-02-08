@@ -1,0 +1,8 @@
+{
+  "/not-found": "app/not-found.js",
+  "/(authenticated)/dashboard/page": "app/(authenticated)/dashboard/page.js",
+  "/(auth)/signup/page": "app/(auth)/signup/page.js",
+  "/(authenticated)/budget/page": "app/(authenticated)/budget/page.js",
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(authenticated)/net-worth/page": "app/(authenticated)/net-worth/page.js"
+}
