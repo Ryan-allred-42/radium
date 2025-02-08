@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { IconEdit, IconTrash } from "@tabler/icons-react";
-import { BudgetItem } from "@/app/budget/page";
+import { BudgetItem } from "@/types/budget";
 
 interface BudgetItemCardProps {
   item: BudgetItem;
