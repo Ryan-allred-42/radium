@@ -1,6 +1,7 @@
 import { HeroSection } from "@/components/blocks/hero-section";
 import { FeaturesSectionWithHoverEffects } from "@/components/blocks/feature-section";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
 
 export default function LandingPage() {
   return (
@@ -44,11 +45,16 @@ export default function LandingPage() {
           {/* Screenshot Section */}
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-20 mb-20">
             <div className="relative rounded-xl overflow-hidden shadow-[0_0_50px_-12px_rgba(0,0,0,0.3)] dark:shadow-[0_0_50px_-12px_rgba(255,255,255,0.15)]">
-              <img
-                src="/radium_screenshot.png"
-                alt="Radium Dashboard"
-                className="w-full h-auto relative z-0"
-              />
+              <div className="relative aspect-[16/9]">
+                <Image
+                  src="/radium_screenshot.png"
+                  alt="Radium Dashboard"
+                  fill
+                  priority
+                  className="object-cover"
+                  sizes="(max-width: 1024px) 100vw, 1024px"
+                />
+              </div>
             </div>
           </div>
         </div>
