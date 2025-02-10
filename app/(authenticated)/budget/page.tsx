@@ -9,6 +9,15 @@ import { BudgetItemCard } from "@/components/budget/budget-item-card";
 import { AddEditDialog } from "@/components/budget/add-edit-dialog";
 import { AddCategoryDialog } from "@/components/budget/add-category-dialog";
 import { IconArrowLeft, IconArrowRight, IconPlus } from "@tabler/icons-react";
+import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export interface BudgetItem {
   id: string;
@@ -45,12 +54,18 @@ export default function BudgetPage() {
   const [transactions, setTransactions] = useState<BudgetItem[]>([]);
   const [isAddingPlanned, setIsAddingPlanned] = useState(false);
   const [isAddingTransaction, setIsAddingTransaction] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedTransactionType, setSelectedTransactionType] = useState<"income" | "expense">("expense");
   const [editingItem, setEditingItem] = useState<BudgetItem | null>(null);
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [isAddingIncomeCategory, setIsAddingIncomeCategory] = useState(false);
   const [isAddingExpenseCategory, setIsAddingExpenseCategory] = useState(false);
+  const [showBudgetInitModal, setShowBudgetInitModal] = useState(false);
+  const [hasPlannedItems, setHasPlannedItems] = useState(false);
+  const [mostRecentBudgetMonth, setMostRecentBudgetMonth] = useState<Date | null>(null);
 
   const supabase = createClientComponentClient();
+  const router = useRouter();
 
   // Fetch data for the current month
   useEffect(() => {
@@ -73,6 +88,7 @@ export default function BudgetPage() {
         setCustomCategories(customCategoriesData as CustomCategory[]);
       }
 
+      // Check for planned items in current month
       const { data: plannedData } = await supabase
         .from("planned_budget")
         .select("*")
@@ -80,6 +96,23 @@ export default function BudgetPage() {
         .gte("date", startDate.toISOString())
         .lte("date", endDate.toISOString())
         .is("deleted_at", null);
+
+      // If no planned items for current month, check for most recent month with planned items
+      if (!plannedData?.length) {
+        const { data: mostRecentPlanned } = await supabase
+          .from("planned_budget")
+          .select("*")
+          .eq("userid", user.id)
+          .is("deleted_at", null)
+          .order("date", { ascending: false })
+          .limit(1);
+
+        if (mostRecentPlanned?.length) {
+          setMostRecentBudgetMonth(new Date(mostRecentPlanned[0].date));
+          setHasPlannedItems(true);
+        }
+        setShowBudgetInitModal(true);
+      }
 
       const { data: transactionData } = await supabase
         .from("transactions")
@@ -111,8 +144,8 @@ export default function BudgetPage() {
       .insert([
         {
           userid: user.id,
-          title: { [data.category]: data.category },
-          value: { [data.category]: data.value },
+          title: { [data.title]: data.title },
+          value: { [data.title]: data.value },
           category: data.category,
           transaction_type: data.transaction_type,
           date: format(currentDate, "yyyy-MM-dd"),
@@ -246,6 +279,7 @@ export default function BudgetPage() {
       // Update existing item
       const updatedItem = {
         ...existingItem,
+        title: { [category]: category },
         value: { [category]: value }
       };
       await handleEdit(updatedItem, "planned");
@@ -259,6 +293,80 @@ export default function BudgetPage() {
       };
       await handleAddItem("planned", newItemData);
     }
+  };
+
+  const handleCategoryClick = (category: string) => {
+    router.push(`/budget/${encodeURIComponent(category.toLowerCase())}?month=${currentDate.toISOString()}`);
+  };
+
+  const handleQuickAddTransaction = (category: string, type: "income" | "expense", e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click when clicking the button
+    setSelectedCategory(category);
+    setSelectedTransactionType(type);
+    setIsAddingTransaction(true);
+  };
+
+  const handleAddTransaction = async (data: AddEditData) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: newItem, error } = await supabase
+      .from("transactions")
+      .insert([
+        {
+          userid: user.id,
+          title: { [data.title]: data.title },
+          value: { [data.title]: data.value },
+          category: data.category,
+          transaction_type: data.transaction_type,
+          date: format(currentDate, "yyyy-MM-dd"),
+        },
+      ])
+      .select()
+      .single();
+
+    if (!error && newItem) {
+      setTransactions([...transactions, newItem]);
+    }
+  };
+
+  const copyBudgetFromTemplate = async () => {
+    if (!mostRecentBudgetMonth) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Fetch template month's planned items
+    const { data: templateItems } = await supabase
+      .from("planned_budget")
+      .select("*")
+      .eq("userid", user.id)
+      .gte("date", startOfMonth(mostRecentBudgetMonth).toISOString())
+      .lte("date", endOfMonth(mostRecentBudgetMonth).toISOString())
+      .is("deleted_at", null);
+
+    if (templateItems) {
+      // Create new planned items for current month
+      const newItems = templateItems.map(item => ({
+        userid: user.id,
+        title: item.title,
+        value: item.value,
+        category: item.category,
+        transaction_type: item.transaction_type,
+        date: format(currentDate, "yyyy-MM-dd"),
+      }));
+
+      const { data: insertedItems } = await supabase
+        .from("planned_budget")
+        .insert(newItems)
+        .select();
+
+      if (insertedItems) {
+        setPlannedBudget(insertedItems);
+      }
+    }
+
+    setShowBudgetInitModal(false);
   };
 
   return (
@@ -279,16 +387,19 @@ export default function BudgetPage() {
             </Button>
           </CardContent>
         </Card>
-        <div className="flex gap-2 ml-auto">
-          <Button onClick={() => setIsAddingPlanned(true)}>Add Planned Item</Button>
-          <Button onClick={() => setIsAddingTransaction(true)}>Add Transaction</Button>
+        <div className="flex gap-2 items-center ml-auto">
+          <Button onClick={() => {
+            setSelectedCategory(null);
+            setSelectedTransactionType("expense");
+            setIsAddingTransaction(true);
+          }}>Add Transaction</Button>
         </div>
       </div>
 
       {/* Combined Summary Card */}
       <Card className="bg-white dark:bg-neutral-800">
         <CardHeader>
-          <CardTitle className="text-lg">Financial Summary</CardTitle>
+          <CardTitle>Financial Summary</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-8">
@@ -370,19 +481,39 @@ export default function BudgetPage() {
               </thead>
               <tbody>
                 {incomeSummaries.map((summary) => (
-                  <tr key={summary.category} className="border-b">
-                    <td className="py-2 capitalize w-1/4">{summary.category}</td>
+                  <tr 
+                    key={summary.category} 
+                    className="border-b cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+                    onClick={() => handleCategoryClick(summary.category)}
+                  >
+                    <td className="py-2 capitalize w-1/4">
+                      <div className="flex items-center gap-2">
+                        {summary.category}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => handleQuickAddTransaction(summary.category, "income", e)}
+                        >
+                          <IconPlus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
                     <td className="text-right py-2 w-1/4">
                       <div className="flex justify-end">
                         <span className="mr-1">$</span>
                         <input
                           type="number"
                           value={summary.planned || 0}
-                          onChange={(e) => handlePlannedValueChange(
-                            summary.category,
-                            parseFloat(e.target.value) || 0,
-                            "income"
-                          )}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handlePlannedValueChange(
+                              summary.category,
+                              parseFloat(e.target.value) || 0,
+                              "income"
+                            );
+                          }}
+                          onClick={(e) => e.stopPropagation()}
                           className="w-24 text-right bg-transparent border-b border-dashed border-gray-300 dark:border-gray-600 focus:outline-none focus:border-primary py-1"
                         />
                       </div>
@@ -429,19 +560,39 @@ export default function BudgetPage() {
               </thead>
               <tbody>
                 {expenseSummaries.map((summary) => (
-                  <tr key={summary.category} className="border-b">
-                    <td className="py-2 capitalize w-1/4">{summary.category}</td>
+                  <tr 
+                    key={summary.category} 
+                    className="border-b cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors"
+                    onClick={() => handleCategoryClick(summary.category)}
+                  >
+                    <td className="py-2 capitalize w-1/4">
+                      <div className="flex items-center gap-2">
+                        {summary.category}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => handleQuickAddTransaction(summary.category, "expense", e)}
+                        >
+                          <IconPlus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
                     <td className="text-right py-2 w-1/4">
                       <div className="flex justify-end">
                         <span className="mr-1">$</span>
                         <input
                           type="number"
                           value={summary.planned || 0}
-                          onChange={(e) => handlePlannedValueChange(
-                            summary.category,
-                            parseFloat(e.target.value) || 0,
-                            "expense"
-                          )}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handlePlannedValueChange(
+                              summary.category,
+                              parseFloat(e.target.value) || 0,
+                              "expense"
+                            );
+                          }}
+                          onClick={(e) => e.stopPropagation()}
                           className="w-24 text-right bg-transparent border-b border-dashed border-gray-300 dark:border-gray-600 focus:outline-none focus:border-primary py-1"
                         />
                       </div>
@@ -470,62 +621,42 @@ export default function BudgetPage() {
         </CardContent>
       </Card>
 
-      {/* Detailed Lists */}
-      <div className="grid md:grid-cols-2 gap-8">
-        {/* Planned Budget Items */}
-        <Card className="bg-white dark:bg-neutral-800">
-          <CardHeader>
-            <CardTitle>Planned Budget Items</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {plannedBudget.map((item) => (
-              <BudgetItemCard
-                key={item.id}
-                item={item}
-                onEdit={(updatedItem) => handleEdit(updatedItem, "planned")}
-                onDelete={() => handleDelete(item.id, "planned")}
-              />
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Transactions */}
-        <Card className="bg-white dark:bg-neutral-800">
-          <CardHeader>
-            <CardTitle>Transactions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {transactions.map((item) => (
-              <BudgetItemCard
-                key={item.id}
-                item={item}
-                onEdit={(updatedItem) => handleEdit(updatedItem, "transaction")}
-                onDelete={() => handleDelete(item.id, "transaction")}
-              />
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Add/Edit Dialogs */}
+      <AddEditDialog
+        open={isAddingTransaction}
+        onOpenChange={(open) => {
+          setIsAddingTransaction(open);
+          if (!open) {
+            setSelectedCategory(null);
+            setSelectedTransactionType("expense");
+          }
+        }}
+        onSubmit={handleAddTransaction}
+        type="transaction"
+        defaultValues={{
+          title: "",
+          value: 0,
+          category: selectedCategory || "",
+          transaction_type: selectedTransactionType,
+        }}
+      />
       <AddEditDialog
         open={isAddingPlanned}
         onOpenChange={setIsAddingPlanned}
         onSubmit={(data) => handleAddItem("planned", data)}
         type="planned"
-      />
-      <AddEditDialog
-        open={isAddingTransaction}
-        onOpenChange={setIsAddingTransaction}
-        onSubmit={(data) => handleAddItem("transaction", data)}
-        type="transaction"
+        defaultValues={{
+          title: "",
+          value: 0,
+          category: "",
+          transaction_type: "expense",
+        }}
       />
       <AddCategoryDialog
         open={isAddingIncomeCategory}
         onOpenChange={setIsAddingIncomeCategory}
         type="income"
         onSuccess={() => {
-          // Refresh data
           const fetchData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
@@ -548,7 +679,6 @@ export default function BudgetPage() {
         onOpenChange={setIsAddingExpenseCategory}
         type="expense"
         onSuccess={() => {
-          // Refresh data
           const fetchData = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
@@ -566,6 +696,53 @@ export default function BudgetPage() {
           fetchData();
         }}
       />
+
+      {/* Add Budget Init Modal */}
+      <Dialog open={showBudgetInitModal} onOpenChange={setShowBudgetInitModal}>
+        <DialogContent className="bg-white dark:bg-neutral-800">
+          <DialogHeader>
+            <DialogTitle>
+              {hasPlannedItems 
+                ? `Create budget for ${format(currentDate, "MMMM yyyy")}`
+                : "Welcome to your budgets!"}
+            </DialogTitle>
+            <DialogDescription>
+              {hasPlannedItems ? (
+                <div className="space-y-4 pt-2">
+                  <p>Would you like to:</p>
+                  <div className="space-y-2">
+                    <Button 
+                      className="w-full justify-start" 
+                      onClick={copyBudgetFromTemplate}
+                    >
+                      1. Start with a template from {format(mostRecentBudgetMonth!, "MMMM yyyy")} (recommended)
+                    </Button>
+                    <Button 
+                      className="w-full justify-start" 
+                      variant="outline"
+                      onClick={() => setShowBudgetInitModal(false)}
+                    >
+                      2. Start from scratch
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 pt-2">
+                  <p>
+                    Add planned category expenses to get started. Next month, you can use this month's values as a template so it'll be faster.
+                  </p>
+                  <Button 
+                    className="w-full" 
+                    onClick={() => setShowBudgetInitModal(false)}
+                  >
+                    Get Started
+                  </Button>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 } 

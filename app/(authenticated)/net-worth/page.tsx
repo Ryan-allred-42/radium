@@ -220,22 +220,114 @@ export default function NetWorthPage() {
         </Button>
       </div>
 
-      {/* Current Net Worth Card */}
-      <Card className="bg-white dark:bg-neutral-800">
-        <CardHeader>
-          <CardTitle className="text-lg">Current Net Worth</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-3xl font-bold">
-            ${getCurrentNetWorth().toLocaleString()}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            As of {netWorthHistory.length > 0 
-              ? format(parseISO(netWorthHistory[netWorthHistory.length - 1].date), "MMMM d, yyyy")
-              : "No entries yet"}
-          </p>
-        </CardContent>
-      </Card>
+      {/* Cards Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Current Net Worth Card */}
+        <Card className="bg-white dark:bg-neutral-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Current Net Worth</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${getCurrentNetWorth().toLocaleString()}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              As of {netWorthHistory.length > 0 
+                ? format(parseISO(netWorthHistory[netWorthHistory.length - 1].date), "MMMM d, yyyy")
+                : "No entries yet"}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Net Worth Growth Card */}
+        <Card className="bg-white dark:bg-neutral-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Net Worth Growth</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {netWorthHistory.length >= 2 ? (
+              (() => {
+                const sortedEntries = [...netWorthHistory].sort(
+                  (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                );
+                const firstEntry = sortedEntries[0];
+                const lastEntry = sortedEntries[sortedEntries.length - 1];
+                
+                const firstNetWorth = calculateTotalNetWorth(firstEntry);
+                const lastNetWorth = calculateTotalNetWorth(lastEntry);
+                const totalChange = lastNetWorth - firstNetWorth;
+                const percentageChange = (totalChange / firstNetWorth) * 100;
+                const isPositive = percentageChange >= 0;
+                
+                return (
+                  <>
+                    <div className={`text-2xl font-bold ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {isPositive ? '+' : ''}{percentageChange.toFixed(2)}%
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Since {format(parseISO(firstEntry.date), "MMMM d, yyyy")}
+                    </p>
+                  </>
+                );
+              })()
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Need at least two entries to calculate growth
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Average Monthly Change Card */}
+        <Card className="bg-white dark:bg-neutral-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Average Monthly Change</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {netWorthHistory.length >= 2 ? (
+              (() => {
+                const sortedEntries = [...netWorthHistory].sort(
+                  (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+                );
+                const firstEntry = sortedEntries[0];
+                const lastEntry = sortedEntries[sortedEntries.length - 1];
+                
+                const firstDate = new Date(firstEntry.date);
+                const lastDate = new Date(lastEntry.date);
+                const monthsDiff = (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + 
+                                 (lastDate.getMonth() - firstDate.getMonth());
+                
+                const firstNetWorth = calculateTotalNetWorth(firstEntry);
+                const lastNetWorth = calculateTotalNetWorth(lastEntry);
+                const totalChange = lastNetWorth - firstNetWorth;
+                const monthlyChange = monthsDiff > 0 ? totalChange / monthsDiff : totalChange;
+
+                const isPositive = monthlyChange >= 0;
+                
+                return (
+                  <>
+                    <div className={`text-2xl font-bold ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {isPositive ? '+' : ''}{monthlyChange.toLocaleString('en-US', {
+                        style: 'currency',
+                        currency: 'USD',
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Based on {monthsDiff} month{monthsDiff === 1 ? '' : 's'} of data
+                    </p>
+                  </>
+                );
+              })()
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Need at least two entries to calculate average change
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Net Worth Chart */}
       <Card className="bg-white dark:bg-neutral-800">
@@ -352,13 +444,13 @@ export default function NetWorthPage() {
           }
         }}
       >
-        <DialogContent className="bg-white dark:bg-neutral-800">
+        <DialogContent className="bg-white dark:bg-neutral-800 max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {editingEntry ? "Edit Entry" : "Add New Entry"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-6 flex-1 overflow-hidden flex flex-col">
             <div className="space-y-2">
               <Label htmlFor="date">Date</Label>
               <Input
@@ -377,62 +469,70 @@ export default function NetWorthPage() {
               )}
             </div>
 
-            <div className="space-y-4">
-              {entryItems.map((item, index) => (
-                <div key={index} className="flex gap-4 items-start">
-                  <div className="flex-1 space-y-2">
-                    <Label>Title</Label>
-                    <Input
-                      value={item.title}
-                      onChange={(e) => handleItemChange(index, "title", e.target.value)}
-                      placeholder="e.g., Savings, Investments, Property"
-                      required
-                      className="bg-white dark:bg-neutral-800"
-                    />
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <Label>Value</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={item.value}
-                      onChange={(e) => handleItemChange(index, "value", e.target.value)}
-                      required
-                      className="bg-white dark:bg-neutral-800"
-                    />
-                  </div>
-                  {index > 0 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="mt-8"
-                      onClick={() => handleRemoveItem(index)}
-                    >
-                      <IconTrash className="h-4 w-4" />
-                    </Button>
-                  )}
+            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+              <div className="grid grid-cols-[1fr,auto,1fr,auto] gap-x-4 mb-2 px-4">
+                <Label>Title</Label>
+                <div />
+                <Label>Value</Label>
+                <div />
+              </div>
+              
+              <div className="overflow-y-auto flex-1 pr-2">
+                <div className="space-y-2">
+                  {entryItems.map((item, index) => (
+                    <div key={index} className="grid grid-cols-[1fr,auto,1fr,auto] gap-4 items-center">
+                      <Input
+                        value={item.title}
+                        onChange={(e) => handleItemChange(index, "title", e.target.value)}
+                        placeholder="e.g., Savings, Investments"
+                        required
+                        className="bg-white dark:bg-neutral-800"
+                      />
+                      <span className="text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.value}
+                        onChange={(e) => handleItemChange(index, "value", e.target.value)}
+                        required
+                        className="bg-white dark:bg-neutral-800"
+                      />
+                      {index > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveItem(index)}
+                          className="h-8 w-8"
+                        >
+                          <IconTrash className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {index === 0 && <div className="w-8" />}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full"
-              onClick={handleAddItem}
-            >
-              <IconPlus className="h-4 w-4 mr-2" />
-              Add Item
-            </Button>
+            <div className="space-y-4 pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleAddItem}
+              >
+                <IconPlus className="h-4 w-4 mr-2" />
+                Add Item
+              </Button>
 
-            <div className="pt-4 border-t">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center">
                 <span className="font-medium">Total Net Worth:</span>
                 <span className="text-lg font-bold">
                   ${entryItems.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
                 </span>
               </div>
+
               <div className="flex justify-end gap-2">
                 <Button
                   type="button"

@@ -51,6 +51,12 @@ interface AddEditDialogProps {
     transaction_type: "income" | "expense";
   }) => void;
   type: "planned" | "transaction";
+  defaultValues?: {
+    title: string;
+    value: number;
+    category: string;
+    transaction_type: "income" | "expense";
+  };
 }
 
 export function AddEditDialog({
@@ -58,11 +64,14 @@ export function AddEditDialog({
   onOpenChange,
   onSubmit,
   type,
+  defaultValues,
 }: AddEditDialogProps) {
-  const [title, setTitle] = useState("");
-  const [value, setValue] = useState("");
-  const [category, setCategory] = useState("");
-  const [transactionType, setTransactionType] = useState<"income" | "expense">("expense");
+  const [title, setTitle] = useState(defaultValues?.title || "");
+  const [value, setValue] = useState(defaultValues?.value?.toString() || "");
+  const [category, setCategory] = useState(defaultValues?.category || "");
+  const [transactionType, setTransactionType] = useState<"income" | "expense">(
+    defaultValues?.transaction_type || "expense"
+  );
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const supabase = createClientComponentClient();
 
@@ -88,8 +97,18 @@ export function AddEditDialog({
   }, [open]);
 
   useEffect(() => {
-    setCategory("");
-  }, [transactionType]);
+    if (defaultValues) {
+      setTitle(defaultValues.title);
+      setValue(defaultValues.value.toString());
+      setCategory(defaultValues.category);
+      setTransactionType(defaultValues.transaction_type);
+    } else {
+      setTitle("");
+      setValue("");
+      setCategory("");
+      setTransactionType("expense");
+    }
+  }, [defaultValues, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

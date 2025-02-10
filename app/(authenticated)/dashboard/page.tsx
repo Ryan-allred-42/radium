@@ -2,7 +2,7 @@
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { IconWallet, IconArrowUpRight, IconArrowDownRight } from "@tabler/icons-react";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -375,6 +375,47 @@ export default function DashboardPage() {
       }
     }
 
+    if (selectedChartType === 'net-worth') {
+      const netWorthData = data.filter((item): item is { date: string; value: number } => 
+        'date' in item && 'value' in item
+      );
+      
+      const sortedEntries = netWorthData.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      return (
+        <div className="h-[400px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={sortedEntries} margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis 
+                dataKey="date"
+                angle={-45}
+                textAnchor="end"
+                height={70}
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => `$${value.toLocaleString()}`}
+              />
+              <Tooltip
+                formatter={(value: number) => [`$${value.toLocaleString()}`, "Net Worth"]}
+                contentStyle={{ fontSize: 12 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="value"
+                stroke="#2563eb"
+                strokeWidth={2}
+                dot={{ r: 4 }}
+                activeDot={{ r: 6 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    }
+
     switch (selectedChartType) {
       case 'income':
         return (
@@ -497,19 +538,6 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           );
         }
-
-      case 'net-worth':
-        return (
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="value" stroke="#8B5CF6" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
-        );
     }
   };
 
@@ -654,6 +682,88 @@ export default function DashboardPage() {
     }
   };
 
+  const renderNetWorthMetrics = () => {
+    if (selectedChartType !== 'net-worth') return null;
+
+    const sortedEntries = netWorthLogs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let monthlyChange = 0;
+    let monthsDiff = 0;
+    let isPositive = false;
+    let percentageChange = 0;
+
+    if (sortedEntries.length >= 2) {
+      const firstEntry = sortedEntries[0];
+      const lastEntry = sortedEntries[sortedEntries.length - 1];
+      
+      const firstDate = new Date(firstEntry.date);
+      const lastDate = new Date(lastEntry.date);
+      monthsDiff = (lastDate.getFullYear() - firstDate.getFullYear()) * 12 + 
+                  (lastDate.getMonth() - firstDate.getMonth());
+      
+      const firstNetWorth = calculateTotalNetWorth(firstEntry);
+      const lastNetWorth = calculateTotalNetWorth(lastEntry);
+      const totalChange = lastNetWorth - firstNetWorth;
+      monthlyChange = monthsDiff > 0 ? totalChange / monthsDiff : totalChange;
+      percentageChange = (totalChange / firstNetWorth) * 100;
+      isPositive = monthlyChange >= 0;
+    }
+
+    return (
+      <>
+        <Card className="bg-white dark:bg-neutral-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Net Worth</CardTitle>
+            <IconWallet className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              ${sortedEntries.length > 0 ? calculateTotalNetWorth(sortedEntries[sortedEntries.length - 1]).toLocaleString() : '0'}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-neutral-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Average Monthly Change</CardTitle>
+            <IconArrowUpRight className={`h-4 w-4 ${isPositive ? 'text-emerald-500' : 'text-red-500'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
+              {monthlyChange !== 0 ? (
+                <>
+                  {isPositive ? '+' : '-'}${Math.abs(monthlyChange).toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                </>
+              ) : (
+                '$0.00'
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-neutral-800">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Net Worth Growth</CardTitle>
+            <IconArrowUpRight className={`h-4 w-4 ${isPositive ? 'text-emerald-500' : 'text-red-500'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${isPositive ? 'text-emerald-500' : 'text-red-500'}`}>
+              {percentageChange !== 0 ? (
+                <>
+                  {isPositive ? '+' : '-'}{Math.abs(percentageChange).toFixed(2)}%
+                </>
+              ) : (
+                '0.00%'
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </>
+    );
+  };
+
   return (
     <div className="space-y-8">
       {/* Top Section */}
@@ -666,11 +776,11 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <div className="inline-flex h-10 items-center rounded-md border bg-white dark:bg-neutral-800">
+            <div className="inline-flex h-8 items-center rounded-md border bg-white dark:bg-neutral-800">
               <Button
                 variant={selectedChartType === 'income' ? 'default' : 'ghost'}
                 onClick={() => setSelectedChartType('income')}
-                className="h-9 rounded-none first:rounded-l-md px-3"
+                className="h-8 rounded-none first:rounded-l-md px-6"
                 size="sm"
               >
                 Income
@@ -678,7 +788,7 @@ export default function DashboardPage() {
               <Button
                 variant={selectedChartType === 'expenses' ? 'default' : 'ghost'}
                 onClick={() => setSelectedChartType('expenses')}
-                className="h-9 rounded-none border-l px-3"
+                className="h-8 rounded-none border-l px-6"
                 size="sm"
               >
                 Expenses
@@ -686,7 +796,7 @@ export default function DashboardPage() {
               <Button
                 variant={selectedChartType === 'income-vs-expenses' ? 'default' : 'ghost'}
                 onClick={() => setSelectedChartType('income-vs-expenses')}
-                className="h-9 rounded-none border-l px-3"
+                className="h-8 rounded-none border-l px-6"
                 size="sm"
               >
                 Income vs Expenses
@@ -694,7 +804,7 @@ export default function DashboardPage() {
               <Button
                 variant={selectedChartType === 'net-worth' ? 'default' : 'ghost'}
                 onClick={() => setSelectedChartType('net-worth')}
-                className="h-9 rounded-none border-l last:rounded-r-md px-3"
+                className="h-8 rounded-none border-l last:rounded-r-md px-6"
                 size="sm"
               >
                 Net Worth
@@ -827,17 +937,7 @@ export default function DashboardPage() {
             </>
           ) : (
             <>
-              <Card className="bg-white dark:bg-neutral-800">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Net Worth</CardTitle>
-                  <IconWallet className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    ${latestNetWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </CardContent>
-              </Card>
+              {renderNetWorthMetrics()}
             </>
           )}
         </div>

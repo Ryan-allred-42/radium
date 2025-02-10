@@ -1,3 +1,6 @@
 {
-  "/page": "app/page.js"
+  "/(authenticated)/dashboard/page": "app/(authenticated)/dashboard/page.js",
+  "/(authenticated)/net-worth/page": "app/(authenticated)/net-worth/page.js",
+  "/(authenticated)/budget/page": "app/(authenticated)/budget/page.js",
+  "/(authenticated)/budget/[category]/page": "app/(authenticated)/budget/[category]/page.js"
 }
