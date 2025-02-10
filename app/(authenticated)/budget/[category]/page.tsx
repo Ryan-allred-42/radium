@@ -87,7 +87,11 @@ export default function CategoryPage() {
     const newDate = addMonths(currentDate, increment);
     setCurrentDate(newDate);
     // Update URL with new month
-    const params = new URLSearchParams(searchParams);
+    const params = new URLSearchParams();
+    // Copy over existing params
+    searchParams.forEach((value, key) => {
+      params.set(key, value);
+    });
     params.set("month", newDate.toISOString());
     router.push(`/budget/${category}?${params.toString()}`);
   };
